@@ -7,8 +7,12 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4"
-awc = { version = "3", features = ["rustls"] }
 config = "0.13.3"
 http = "0.2.9"
 log = "0.4"
 once_cell = "1.17.1"
+tokio = "1.28.0"
+headless_chrome = { git = "https://github.com/atroche/rust-headless-chrome", features = [
+    "fetch",
+] }
+anyhow = "1.0.71"

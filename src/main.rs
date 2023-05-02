@@ -1,55 +1,30 @@
-use actix_web::{get, App, HttpResponse, HttpServer, Responder};
-use config::Config;
-use http::header::AUTHORIZATION;
-use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use anyhow::Result;
 
-static CONFIG: Lazy<Config> = Lazy::new(|| {
-    Config::builder()
-        .add_source(config::File::with_name("src/Settings.toml"))
-        .build()
-        .unwrap()
-});
+use headless_chrome::{Browser, LaunchOptions};
 
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+fn query(input: &str) -> Result<()> {
+    let browser = Browser::new(
+        LaunchOptions::default_builder()
+            .build()
+            .expect("Could not find chrome-executable"),
+    )?;
+    let tab = browser.new_tab()?;
+    tab.navigate_to("https://en.wikipedia.org")?
+        .wait_for_element("input#searchInput")?
+        .click()?;
+    tab.type_str(input)?.press_key("Enter")?;
+    println!("Hello");
+    match tab.wait_for_element("div.shortdescription") {
+        Err(e) => eprintln!("Query failed: {e:?}"),
+        Ok(e) => match e.get_description()?.find(|n| n.node_name == "#text") {
+            Some(n) => println!("Result for `{}`: {}", &input, n.node_value),
+            None => eprintln!("No shortdescription-node found on page"),
+        },
+    }
+    Ok(())
 }
 
-#[get("/navitia")]
-async fn navitia() -> HttpResponse {
-    let api_key = CONFIG
-        .to_owned()
-        .try_deserialize::<HashMap<String, String>>()
-        .unwrap()
-        .get("api_key")
-        .unwrap()
-        .clone();
-
-    // create client
-    let client = awc::Client::default();
-
-    // construct request
-    let req = client
-        .get("https://api.navitia.io/v1/coverage/fr-idf/journeys?from=stop_area%3AIDFM%3A68105&to=stop_area%3AIDFM%3A71673&")
-        .insert_header((AUTHORIZATION, api_key));
-
-    log::info!("starting HTTP server to navitia");
-
-    // send request and await response
-    let mut res = req.send().await.unwrap();
-    println!("Response: {:?}", res);
-
-    let payload = res.body().await.unwrap();
-
-    HttpResponse::Ok().body(payload)
-}
-
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(navitia))
-        .bind(("127.0.0.1", 8080))?
-        .workers(1)
-        .run()
-        .await
+fn main() -> Result<()> {
+    let input = "Elvis Aaron Presley";
+    query(input)
 }
